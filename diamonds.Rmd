@@ -1,0 +1,300 @@
+---
+title: "project_BUAN"
+author: "Norah Alyabs"
+date: "November 12, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, comment = NA, prompt = TRUE, warning=FALSE, message=FALSE)
+```
+***Diamond project***
+
+
+#Used packages:
+
+```{r}
+library(readxl)
+library(utils)
+library(dplyr)
+library(MASS)
+library(gtools)
+library(lattice)
+library(ggplot2)
+library("corrplot")
+library(GGally)
+library(caret)
+library(RColorBrewer)
+library(klaR)
+```
+
+##Upload data:
+
+```{r}
+diamonds <- read_excel("C:/Users/avanm/OneDrive/Desktop/R project/diamonds.xlsx")
+attach(diamonds)
+head(diamonds)
+```
+
+
+# exploring data & visualization:
+
+The data has about 5.4K observations on 10 variables, 3 of them are categorical variables (cut, color, and clarity) and the others are quantitative variables:
+
+
+Variable | description
+---------|----------------------------------------------------------------------------------
+X_1| Index: counter
+carat |Carat weight of the diamond
+cut |Describe cut quality of the diamond. Quality in increasing order Fair, Good, Very Good, Premium, Ideal
+color|Color of the diamond, with D being the best and J the worst
+clarity|How obvious inclusions are within the diamond:(in order from best to worst, FL = flawless, I3= level 3 inclusions) FL,IF, VVS1, VVS2, VS1, VS2, SI1, SI2, I1, I2, I3
+depth|depth % :The height of a diamond, measured from the culet to the table, divided by its average girdle diameter
+table|table%: The width of the diamond's table expressed as a percentage of its average diameter
+price|the price of the diamond
+x|length mm
+y|width mm
+z|depth mm
+------
+
+#check if there is missing values:
+
+```{r}
+diamonds[!complete.cases(diamonds),]
+```
+
+which means the data is complete with no missing values. On the other hand, x,y,z are dimension variables and carate indicates weight, which can not take value equal or less than zero. However, some x,y,z  has zero value which doesn`t make sense, remove those values and keep only sensible values.
+
+In addition, remove the first column X_1 because we dont need it in the analysis.
+
+```{r}
+diamonds <- subset(diamonds, z > 0 ) 
+diamonds <-diamonds[,-1]
+```
+
+#Describtive statistics:
+
+```{r}
+summ1 <- data.frame(mean=sapply(diamonds, mean), 
+                         sd=sapply(diamonds, sd), 
+                         min=sapply(diamonds, min), 
+                         max=sapply(diamonds, max), 
+                         median=sapply(diamonds, median), 
+                         length=sapply(diamonds, length),
+                         miss.val=sapply(diamonds, function(x) 
+                         sum((is.na(x)))))
+options(scipen = 999)
+print(summ1, digits=1)
+
+```
+
+#Visualising data:
+
+As mentioned above, there are 3 categorical variables which visualise in different way than quantitative variables. The mean focus in this study is to try to understand the affected factors on the price of the diamonds. Therefore, the visualization will focus on the pattren of each variable and its relation with the price.
+
+
+#Bar Chart for Categorical Variable
+
+1- Color:
+
+```{r}
+colfunc <- colorRampPalette(c("navy", "white"))
+barplot(table(diamonds$color), main = "color distribution", xlab = "color", col = colfunc(7))
+
+```
+
+Color of the diamond, with D being the best and J the worst
+
+2- Cut:
+
+```{r}
+colfunc <- colorRampPalette(c("green", "white"))
+barplot(table(diamonds$cut), main = "cut distribution", xlab = "color", col = colfunc(5))
+
+```
+
+cut: Describe cut quality of the diamond. Quality in increasing order Fair, Good, Very Good, Premium, Ideal
+
+3- Clarity:
+
+```{r}
+colfunc <- colorRampPalette(c("white", "black"))
+barplot(table(diamonds$clarity), main = "clarity distribution", xlab = "color", col = colfunc(11))
+```
+
+clarity: How obvious inclusions are within the diamond:(in order from best to worst, FL = flawless, I3= level 3 inclusions) FL,IF, VVS1, VVS2, VS1, VS2, SI1, SI2, I1, I2, I3
+
+#Comparing 2 categorical variables: (@u could add more comparisons )
+
+```{r}
+
+ggplot(data = diamonds) + 
+  geom_bar(mapping = aes(x = cut, fill = clarity),alpha = 1/2, position = "dodge")
+
+```
+
+#Relation of categorical variable with the price:
+
+```{r}
+ggplot(diamonds, aes(x=color, y=price, fill=color)) +  geom_boxplot()+ scale_fill_brewer(palette="Set1")
+ggplot(diamonds, aes(x=cut, y=price, fill=cut)) +  geom_boxplot()+ scale_fill_brewer(palette="Set2")
+ggplot(diamonds, aes(x=clarity, y=price, fill=clarity)) +  geom_boxplot()+ scale_fill_brewer(palette="Set3")
+
+
+
+```
+
+
+#Scatter Plot and correlation matrix for quantitive variables:
+
+```{r}
+diamondsM <- diamonds[,c(1,5:10)]
+cor.matrix <- cor(diamondsM)
+corrplot(cor.matrix)
+```
+
+price has high possitive correlation with the shape variables:carat and x,y,z, which makes sense as the diamond size increase the price will increase.
+low positive relation between price and table, and it seemed like there is no relatonship between price and depth. 
+
+
+```{r}
+
+ggpairs(diamonds[, c(1,5:10)])
+
+```
+
+@@@make explanition here please
+
+#Divide the Dataset into Train and Validation sets
+Train for fitting algorithm, and Validation for checking.
+
+```{r}
+set.seed(123)
+training.index <- createDataPartition(diamonds$price, p = 0.6, list = FALSE)
+dim.train <- diamonds[training.index, ]
+dim.valid <- diamonds[-training.index, ]
+```
+
+
+**Principal Components Analysis**
+
+Principal Components Analysis used to reduce the number of numerical variable by removing overlap of information between them
+
+
+```{r}
+pca <-princomp(diamondsM)
+summary(pca,loadings=TRUE)
+```
+
+PCA used to Reduce a set of numerical variables, here we have few number of variables.
+
+
+**Linear regression**
+
+we want to predict the price based on other variables, before that we must check the regression assumptions to see if it applicable in the diamonds case or not.
+
+1- Linearity of the data. 
+
+2- Normality of residuals. 
+
+3-Homogeneity of residuals variance.
+
+4-Independence of residuals error terms.
+
+```{r}
+ggplot(data=dim.train, aes(price)) +   geom_histogram(fill = "firebrick" )+ ggtitle("Frequency distripution of the price")
+```
+
+price does not follow normal distribution, data are right skewed which means that a few diamonds are extremly expensive. applying logarithm transformation on price so it follow normality will be helpfull.
+
+```{r}
+dim.train1<-dim.train %>% mutate(logy=log(price))
+dim.train1<-dim.train1[,-7]
+ggplot(data=dim.train1, aes(logy)) +   geom_histogram(fill = "firebrick" )+ ggtitle("Frequency distripution of the log(price)")
+```
+
+log(price) looks like 2 normal curves
+
+```{r}
+
+model <- lm(price ~., data= dim.train)
+model
+boxcox(model)
+```
+coxbox agrees on chossing logarithm transformation too.
+
+```{r}
+model1 <- lm(logy ~., data= dim.train1)
+summary(model1)
+```
+
+It seems like good model and all the variables are significant.
+R2 & Adjusted R2= 0.9814 which means about 98% of the variation in the log(price) is explained by the model. all the p-values are too small which indicate the signifcant of all the predictors in the model. 
+
+using stepwise method to check if there is better model:
+
+```{r}
+step <- step(model1, direction="both")
+```
+
+stepwise method agrees that all the variables are significant in predicting the log(price) of the diamonds
+
+#checking the model:
+```{r}
+par(mfrow = c(2, 2))
+plot(model1)
+dev.off()
+```
+
+The residuals look perfect! they follow normal distribution from QQ plot with few outliers, the variance seems constant based on the scale location, a linear relationship assumptions by comparing residuals vs. fitted values since there is a clear horizential line with no obvious trend.
+
+Therefore the multiple linear regression model is good to predict the log(price) of the diamond based on the predictors, using exponential function , the real price could be calculated. for example : let predict the price of a diamond piece with hte following charecters:##
+
+#Linear Discriminant Analysis:
+
+```{r}
+fivenum(diamonds$price)
+diamonds$priceCat[diamonds$price < 949 ] <- "low"
+diamonds$priceCat[diamonds$price >= 949 & diamonds$price <2401 ] <- "medium"
+diamonds$priceCat[diamonds$price >= 2401 & diamonds$price <5323 ] <- "expensive"
+diamonds$priceCat[diamonds$price >= 5323  ] <- "extremly expensive"
+
+# droping the price column
+diamonds.p <- diamonds[,-7]
+set.seed(123)
+training.index <- createDataPartition(diamonds.p$priceCat, p = 0.6, list = FALSE)
+dim.train <- diamonds.p[training.index, ]
+dim.valid <- diamonds.p[-training.index, ]
+
+  # normalize the data
+    # Estimate preprocessing parameters
+norm.values  <- preProcess(dim.train, method = c("center", "scale"))
+    # Transform the data using the estimated parameters
+dim.train.norm <- predict(norm.values, dim.train)
+dim.valid.norm <- predict(norm.values, dim.valid)
+  
+  # run lda()
+lda2 <- lda(priceCat~., data = dim.train.norm)
+  # output
+lda2
+
+  # predict - using training data and plot
+pred2.train <- predict(lda2, dim.train.norm)
+
+    # generate lda plot
+lda2.plot <- cbind(dim.train.norm, predict(lda2)$x)
+ggplot(lda2.plot, aes(LD1, LD2)) +  geom_point(aes(color = priceCat))
+
+# LDA hist --- revised on 11/28
+par(mar=c(1,1,1,1))
+ldahist(pred2.train$x[,1],g = dim.train.norm$priceCat)
+ldahist(pred2.train$x[,2],g = dim.train.norm$priceCat)
+ldahist(pred2.train$x[,3],g = dim.train.norm$priceCat)
+
+  # predict - using validation data
+pred2 <- predict(lda2, dim.valid.norm)
+# check model accuracy
+table(pred2$class, dim.valid.norm$priceCat)  # pred v actual
+mean(pred2$class == dim.valid.norm$priceCat)  # percent accurate
+```
+```
